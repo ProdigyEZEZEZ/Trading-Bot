@@ -30,3 +30,16 @@ class IBClient(EWrapper, EClient):
     def historicalDataEnd(self, reqId: int, start: str, end: str):
         print(f"Historical data download complete | reqId={reqId} | {start} -> {end}")
         self.historical_data_end_event.set()
+
+    def orderStatus(self, orderId, status, filled, remaining, avgFillPrice,
+                    permId, parentId, lastFillPrice, clientId, whyHeld, mktCapPrice):
+        print(
+            f"Order {orderId} | status={status} | filled={filled} | "
+            f"remaining={remaining} | avgFillPrice={avgFillPrice}"
+        )
+
+    def openOrder(self, orderId, contract, order, orderState):
+        print(f"Open order {orderId} | {contract.symbol} {order.action} {order.totalQuantity} {order.orderType}")
+
+    def execDetails(self, reqId, contract, execution):
+        print(f"Exec | {contract.symbol} | {execution.side} {execution.shares} @ {execution.price}")

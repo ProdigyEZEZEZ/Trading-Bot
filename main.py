@@ -3,6 +3,7 @@ import threading
 import config
 from api.ib_client import IBClient
 from core.contracts import create_us_stock
+from core.orders import create_market_order
 from strategy.engine import Strategy
 
 HISTORICAL_REQ_ID = 1
@@ -54,6 +55,13 @@ def main() -> None:
     df = app.data_handler.get_dataframe()
     signal = strategy.generate_signals(df)
     print(f"{symbol} | bars={len(df)} | signal={signal}")
+
+    if signal in ("BUY", "SELL") and app.next_order_id is not None:
+        order = create_market_order(signal, config.DEFAULT_ORDER_QUANTITY)
+        order_id = app.next_order_id
+        app.next_order_id += 1
+        print(f"Placing {signal} {config.DEFAULT_ORDER_QUANTITY} {symbol} | orderId={order_id}")
+        app.placeOrder(order_id, contract, order)
 
     try:
         threading.Event().wait()
