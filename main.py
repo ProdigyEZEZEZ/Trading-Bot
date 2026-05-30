@@ -1,5 +1,4 @@
 import threading
-import time
 
 import config
 from api.ib_client import IBClient
@@ -46,16 +45,22 @@ def main() -> None:
     )
 
     strategy = Strategy()
-    signal_done = False
 
-    while True:
-        if app.historical_data_end_event.is_set() and not signal_done:
-            df = app.data_handler.get_dataframe()
-            signal = strategy.generate_signals(df)
-            print(f"{symbol} | bars={len(df)} | signal={signal}")
-            signal_done = True
+    if not app.historical_data_end_event.wait(timeout=60):
+        print("Timed out waiting for historical data download.")
+        app.disconnect()
+        return
 
-        time.sleep(1)
+    df = app.data_handler.get_dataframe()
+    signal = strategy.generate_signals(df)
+    print(f"{symbol} | bars={len(df)} | signal={signal}")
+
+    try:
+        threading.Event().wait()
+    except KeyboardInterrupt:
+        print("Shutting down.")
+    finally:
+        app.disconnect()
 
 
 if __name__ == "__main__":

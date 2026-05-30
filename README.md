@@ -66,11 +66,13 @@ AAPL | bars=60 | signal=HOLD
 ## Strategy
 
 Simple **moving average crossover** (trend-following):
-
+(This is the default strategy for testing purposes only)
 - 9-period SMA (fast) and 21-period SMA (slow) on `Close`
 - **BUY** when the 9 crosses above the 21
 - **SELL** when the 9 crosses below the 21
 - **HOLD** otherwise
+
+Change the strategy in engine.py file to fit whatever strategy you want.
 
 Indicators and rules are split in `strategy/engine.py` so either can be swapped independently.
 
