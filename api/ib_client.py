@@ -16,6 +16,7 @@ class IBClient(EWrapper, EClient):
         self.connected_event = threading.Event()
         self.data_handler = DataHandler()
         self.historical_data_end_event = threading.Event()
+        self.new_bar_event = threading.Event()
 
     def error(self, reqId, errorCode, errorString, *args, **kwargs):
         print(f"API Error | reqId={reqId} | code={errorCode} | {errorString}")
@@ -30,6 +31,11 @@ class IBClient(EWrapper, EClient):
     def historicalDataEnd(self, reqId: int, start: str, end: str):
         print(f"Historical data download complete | reqId={reqId} | {start} -> {end}")
         self.historical_data_end_event.set()
+
+    def historicalDataUpdate(self, reqId: int, bar: BarData):
+        # Fired only when reqHistoricalData was called with keepUpToDate=True.
+        self.data_handler.add_or_update_bar(bar)
+        self.new_bar_event.set()
 
     def orderStatus(self, orderId, status, filled, remaining, avgFillPrice,
                     permId, parentId, lastFillPrice, clientId, whyHeld, mktCapPrice):
