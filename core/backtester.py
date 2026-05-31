@@ -1,5 +1,7 @@
 import pandas as pd
 
+from core.position_sizing import calculate_shares
+from core.risk import PositionState, check_risk_stops
 from strategy.engine import Strategy
 
 
@@ -8,23 +10,29 @@ class Backtester:
 
     Walks through a price DataFrame bar-by-bar, asks the Strategy for a
     signal, and simulates BUY/SELL fills at the close of that bar.
-    Long-only, fixed share quantity, no commissions/slippage.
+    Long-only, percent-of-cash sizing, no commissions/slippage.
+
+    Risk stops (trailing + time) come from core.risk and are shared with
+    the live trading loop in main.py.
     """
 
     def __init__(
         self,
         strategy: Strategy,
         starting_cash: float = 100_000.0,
-        quantity: int = 100,
+        position_pct: float = 0.95,
+        trailing_stop_pct: float = 0.05,
+        max_hold_bars: int = 15,
     ):
         self.strategy = strategy
         self.starting_cash = starting_cash
-        self.quantity = quantity
+        self.position_pct = position_pct
+        self.trailing_stop_pct = trailing_stop_pct
+        self.max_hold_bars = max_hold_bars
 
     def run(self, price_dataframe: pd.DataFrame) -> dict:
         cash_balance = self.starting_cash
-        position_shares = 0
-        entry_price = None
+        position_state: PositionState | None = None
         trade_log: list[dict] = []
 
         # Skip warm-up bars where the strategy can't produce a real signal.
@@ -32,37 +40,71 @@ class Backtester:
 
         for bar_index in range(first_evaluable_index, len(price_dataframe)):
             window = price_dataframe.iloc[: bar_index + 1]
-            signal = self.strategy.generate_signals(window)
             current_close = float(window["Close"].iloc[-1])
             bar_time = window.index[-1]
 
-            if signal == "BUY" and position_shares == 0:
-                position_shares = self.quantity
-                cash_balance -= position_shares * current_close
-                entry_price = current_close
+            # ----------------------------------------------------------
+            # RISK CHECKS — run BEFORE the strategy so stops have priority
+            # over any new BUY/SELL signal on this bar.
+            # ----------------------------------------------------------
+            if position_state is not None:
+                position_state.tick()
+                position_state.update_trailing_high(current_close)
+
+                stop_reason = check_risk_stops(
+                    position_state=position_state,
+                    current_price=current_close,
+                    trailing_stop_pct=self.trailing_stop_pct,
+                    max_hold_bars=self.max_hold_bars,
+                )
+                if stop_reason is not None:
+                    cash_balance += position_state.shares * current_close
+                    trade_log.append({
+                        "time": bar_time,
+                        "action": stop_reason,
+                        "price": current_close,
+                        "shares": position_state.shares,
+                        "pnl": position_state.realized_pnl_at(current_close),
+                    })
+                    position_state = None
+                    continue
+
+            # ----------------------------------------------------------
+            # STRATEGY SIGNAL — only reached if no stop fired this bar.
+            # ----------------------------------------------------------
+            signal = self.strategy.generate_signals(window)
+
+            if signal == "BUY" and position_state is None:
+                shares_to_buy = calculate_shares(cash_balance, current_close, self.position_pct)
+                if shares_to_buy <= 0:
+                    continue
+                cash_balance -= shares_to_buy * current_close
+                position_state = PositionState(
+                    shares=shares_to_buy,
+                    entry_price=current_close,
+                    highest_price_since_entry=current_close,
+                )
                 trade_log.append({
                     "time": bar_time,
                     "action": "BUY",
                     "price": current_close,
-                    "shares": position_shares,
+                    "shares": shares_to_buy,
                     "pnl": None,
                 })
-            elif signal == "SELL" and position_shares > 0:
-                exit_price = current_close
-                cash_balance += position_shares * exit_price
-                realized_pnl = (exit_price - entry_price) * position_shares
+            elif signal == "SELL" and position_state is not None:
+                cash_balance += position_state.shares * current_close
                 trade_log.append({
                     "time": bar_time,
                     "action": "SELL",
-                    "price": exit_price,
-                    "shares": position_shares,
-                    "pnl": realized_pnl,
+                    "price": current_close,
+                    "shares": position_state.shares,
+                    "pnl": position_state.realized_pnl_at(current_close),
                 })
-                position_shares = 0
-                entry_price = None
+                position_state = None
 
         final_close = float(price_dataframe["Close"].iloc[-1])
-        final_equity = cash_balance + position_shares * final_close
+        open_position_shares = position_state.shares if position_state is not None else 0
+        final_equity = cash_balance + open_position_shares * final_close
 
         completed_trades = [trade for trade in trade_log if trade["pnl"] is not None]
         winning_trades = [trade for trade in completed_trades if trade["pnl"] > 0]
@@ -76,6 +118,6 @@ class Backtester:
             "starting_cash": self.starting_cash,
             "final_equity": final_equity,
             "total_return": total_return,
-            "open_position_shares": position_shares,
+            "open_position_shares": open_position_shares,
             "trade_log": trade_log,
         }

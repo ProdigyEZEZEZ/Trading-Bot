@@ -1,20 +1,27 @@
 import pandas as pd
 
+from strategy.indicators import calculate_sma
+
 
 class Strategy:
-    """Trading strategy: turns a price DataFrame into a BUY/SELL/HOLD signal."""
+    """Trading strategy: turns a price DataFrame into a BUY/SELL/HOLD signal.
+
+    Indicator math lives in `strategy.indicators` so this class only owns
+    the rules — swap in EMA/RSI/ATR by changing `_compute_indicators` and
+    adjusting `_apply_rules`, without touching any pandas internals here.
+    """
 
     SHORT_WINDOW = 9
     LONG_WINDOW = 21
 
     # ------------------------------------------------------------------
-    # INDICATORS — pure math on the price data.
-    # Swap or extend these without touching the rules below.
+    # INDICATORS — pull values out of strategy.indicators and attach them
+    # to a copy of the price frame so the rules can read them by name.
     # ------------------------------------------------------------------
     def _compute_indicators(self, price_dataframe: pd.DataFrame) -> pd.DataFrame:
         indicator_dataframe = price_dataframe.copy()
-        indicator_dataframe["SMA_short"] = indicator_dataframe["Close"].rolling(self.SHORT_WINDOW).mean()
-        indicator_dataframe["SMA_long"] = indicator_dataframe["Close"].rolling(self.LONG_WINDOW).mean()
+        indicator_dataframe["SMA_short"] = calculate_sma(indicator_dataframe["Close"], self.SHORT_WINDOW)
+        indicator_dataframe["SMA_long"] = calculate_sma(indicator_dataframe["Close"], self.LONG_WINDOW)
         return indicator_dataframe
 
     # ------------------------------------------------------------------

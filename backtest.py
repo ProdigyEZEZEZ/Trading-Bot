@@ -23,12 +23,14 @@ def main() -> None:
 
     price_dataframe = load_price_dataframe(csv_path)
     print(f"Loaded {len(price_dataframe)} bars from {csv_path}")
-
+    print("risk management: trailing stop percentage =", config.TRAILING_STOP_PCT, "max hold bars =", config.MAX_HOLD_BARS)
     strategy = Strategy()
     backtester = Backtester(
         strategy=strategy,
-        starting_cash=100_000.0,
-        quantity=config.DEFAULT_ORDER_QUANTITY,
+        starting_cash=config.STARTING_CASH,
+        position_pct=config.POSITION_SIZE_PCT,
+        trailing_stop_pct=config.TRAILING_STOP_PCT,
+        max_hold_bars=config.MAX_HOLD_BARS,
     )
     results = backtester.run(price_dataframe)
 

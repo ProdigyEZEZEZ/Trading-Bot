@@ -17,9 +17,23 @@ class IBClient(EWrapper, EClient):
         self.data_handler = DataHandler()
         self.historical_data_end_event = threading.Event()
         self.new_bar_event = threading.Event()
+        self.available_cash: float | None = None
+        self.account_summary_event = threading.Event()
 
     def error(self, reqId, errorCode, errorString, *args, **kwargs):
         print(f"API Error | reqId={reqId} | code={errorCode} | {errorString}")
+
+    def accountSummary(self, reqId: int, account: str, tag: str, value: str, currency: str):
+        if tag == "TotalCashValue":
+            try:
+                self.available_cash = float(value)
+            except ValueError:
+                return
+            self.account_summary_event.set()
+
+    def accountSummaryEnd(self, reqId: int):
+        # Unblock waiters even if the requested tag never arrived.
+        self.account_summary_event.set()
 
     def nextValidId(self, orderId: int):
         self.next_order_id = orderId
